@@ -73,9 +73,15 @@ Commands containing `orderId` use that order's version; commands containing `cus
 
 Request keys are scoped to the signed-in requester. Reuse the complete original envelope for a retry, including the acting staff member and expected version. A reused key with different input returns an idempotency conflict and preserves the original result. Rejected, version-conflicting, and unresolved request outcomes are also retained. After refreshing or supplying a requested decision, submit the changed input with a fresh key.
 
-Supported types are `UPDATE_CUSTOMER`, `PUNCH_ORDER`, `EDIT_ORDER`, `SUBMIT_ORDER`, `APPROVE_ORDER`, `REJECT_ORDER`, `START_LOADING`, `DISPATCH_SHIPMENT`, `CONFIRM_DELIVERY`, `CANCEL_REMAINDER`, `RECORD_RETURN`, `RECEIVE_CUSTOMER_PAYMENT`, `ALLOCATE_PAYMENT`, `REDEEM_POINTS`, `ISSUE_CREDIT_NOTE`, `APPLY_CREDIT_NOTE`, `REFUND_CREDIT_NOTE`, `REVERSE_CREDIT_APPLICATION`, `REVERSE_CREDIT_REFUND`, and `CORRECT_DISPATCHED_ORDER`.
+Supported types are `UPDATE_CUSTOMER`, `PUNCH_ORDER`, `EDIT_ORDER`, `SUBMIT_ORDER`, `APPROVE_ORDER`, `REJECT_ORDER`, `START_LOADING`, `DISPATCH_SHIPMENT`, `CONFIRM_DELIVERY`, `CANCEL_REMAINDER`, `RECORD_RETURN`, `RECEIVE_CUSTOMER_PAYMENT`, `ALLOCATE_PAYMENT`, `REDEEM_POINTS`, `ISSUE_CREDIT_NOTE`, `APPLY_CREDIT_NOTE`, `REFUND_CREDIT_NOTE`, `REVERSE_CREDIT_APPLICATION`, `REVERSE_CREDIT_REFUND`, `CORRECT_DISPATCHED_ORDER`, `CORRECT_DELIVERY`, and `MOVE_CUSTOMER_PAYMENT`.
+
+The [rule sheet](rules-catalog.md) lists, for every type, who may run it, the canonical rules it implements, and what the system does afterwards. It is generated from the code.
 
 `UPDATE_CUSTOMER` accepts `{ customerId, name, code }`, requires Sales, Accounts, or Admin, and uses the customer version. Customer codes remain unique and edits are recorded in activity history. Order rows in `/crm/bootstrap` include `totalPaise` for the current commercial revision and `fulfillmentStatus` derived from loading, dispatch, delivery, and cancellation quantities.
+
+`CORRECT_DELIVERY` accepts `{ orderId, shipmentId, reason, items: [{ shipmentLineId, deliveredQty, confirmationId? }] }`, requires KAM or Admin, and uses the order version. `deliveredQty` is the corrected **total** delivered for that line; it must be below the current total and not below the returned units. When a line has several standing confirmations and `confirmationId` is omitted, the result is `NEEDS_DECISION` with one question per ambiguous line; answer by resubmitting with the chosen `confirmationId` and a fresh key.
+
+`MOVE_CUSTOMER_PAYMENT` accepts `{ customerId, receiptId, toCustomerId, reason }`, requires Accounts or Admin, and uses the version of the customer the payment is moved **from**. The result's `aggregateVersions` includes both customers. A payment that funds a credit note is rejected with `RECEIPT_CREDIT_FUNDED`.
 
 `CANCEL_REMAINDER` accepts optional `items: [{ lineKey, qty }]` to cancel selected unshipped quantities; omit `items` to cancel all eligible demand. An explicit empty list is rejected.
 
