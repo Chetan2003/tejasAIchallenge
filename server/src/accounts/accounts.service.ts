@@ -17,7 +17,7 @@ import { ReturnsRepository } from '../returns/returns.repository.js';
 import { FulfillmentRepository } from '../fulfillment/fulfillment.repository.js';
 import { DatabaseService } from '../database/database.service.js';
 import type { ActionContext as Context, Payload } from '../common/domain.js';
-import { authorize, useCustomer, fail, safe } from '../common/domain.js';
+import { authorize, useCustomer, touch, fail, safe } from '../common/domain.js';
 
 @Injectable()
 export class AccountsService {
@@ -158,6 +158,75 @@ export class AccountsService {
         });
     }
     return released;
+  }
+  /**
+   * FDSK-169. A payment was recorded against the wrong customer. The receipt
+   * stays on record (WF-001): its cash is released from the wrong customer's
+   * charges with signed allocations, a receipt_moves document consumes its
+   * value (ACC-004), and the same payment is recorded on the right customer,
+   * where it is allocated by cash priority (WF-002). Points follow cash: the
+   * wrong customer loses what the cash had earned, the right customer earns it.
+   */
+  moveReceipt(c: Context, p: Payload<'MOVE_CUSTOMER_PAYMENT'>) {
+    authorize(c, 'ACCOUNTS', 'ADMIN');
+    useCustomer(c, this.customersRepository.findById(p.customerId));
+    const receipt = this.accountsRepository.findReceipt(p.receiptId);
+    if (!receipt || receipt.customer_id !== c.customerId)
+      fail(
+        'RECEIPT_NOT_FOUND',
+        'Select a payment recorded against this customer',
+      );
+    const target = this.customersRepository.findById(p.toCustomerId);
+    if (!target) fail('NOT_FOUND', 'Customer not found');
+    if (target.id === receipt.customer_id)
+      fail('SAME_CUSTOMER', 'Choose a different customer for the payment');
+    const balance = this.receiptBalance(receipt);
+    if (balance.movedPaise > 0)
+      fail('RECEIPT_ALREADY_MOVED', 'This payment has already been moved');
+    if (balance.reservedPaise > 0)
+      fail(
+        'RECEIPT_CREDIT_FUNDED',
+        'This payment funds a credit note, and credit cannot leave the customer’s account',
+      );
+    touch(c, target.id);
+    for (const allocation of this.accountsRepository.cashByChargeForReceipt(
+      receipt.id,
+    ))
+      this.accountsRepository.insertAllocation(c, {
+        id: randomUUID(),
+        customer_id: receipt.customer_id,
+        receipt_id: receipt.id,
+        charge_id: allocation.charge_id,
+        amount_paise: -allocation.n,
+        action_id: c.id,
+        created_at: c.now,
+      });
+    const movedId = randomUUID();
+    c.references.receiptId = movedId;
+    this.accountsRepository.insertReceipt(c, {
+      id: movedId,
+      customer_id: target.id,
+      amount_paise: receipt.amount_paise,
+      reference: receipt.reference,
+      action_id: c.id,
+      created_at: c.now,
+    });
+    this.accountsRepository.insertReceiptMove(c, {
+      id: randomUUID(),
+      receipt_id: receipt.id,
+      to_receipt_id: movedId,
+      from_customer_id: receipt.customer_id,
+      to_customer_id: target.id,
+      amount_paise: receipt.amount_paise,
+      reason: p.reason,
+      action_id: c.id,
+      created_at: c.now,
+    });
+
+    this.allocateCash(c, target.id);
+
+    this.rewardsService.refresh(c, receipt.customer_id);
+    this.rewardsService.refresh(c, target.id);
   }
   /** ACC-002: where a receipt's value currently sits. The single definition of free cash. */
   receiptBalance(receipt: Receipt) {

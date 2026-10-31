@@ -106,6 +106,7 @@ export class ActionsService {
           requester,
           now: new Date().toISOString(),
           customerId: '',
+          customerIds: new Set(),
           effects: [],
           references: {},
           command: envelope.command,
@@ -182,6 +183,9 @@ export class ActionsService {
               case 'CONFIRM_DELIVERY':
                 this.fulfillmentService.deliver(c, envelope.command.payload);
                 break;
+              case 'MOVE_CUSTOMER_PAYMENT':
+                this.accountsService.moveReceipt(c, envelope.command.payload);
+                break;
               case 'CORRECT_DELIVERY':
                 this.fulfillmentService.correctDelivery(
                   c,
@@ -228,34 +232,43 @@ export class ActionsService {
                 this.fulfillmentService.correct(c, envelope.command.payload);
                 break;
             }
-            this.customersRepository.updateCustomer(c, c.customerId, {
-              version:
-                this.accountsService.summary(c.customerId).customer.version + 1,
-            });
-            for (const order of this.ordersRepository.forCustomer(c.customerId))
-              this.ordersRepository.updateOrder(c, order.id, {
-                version: order.version + 1,
+            for (const customerId of c.customerIds) {
+              this.customersRepository.updateCustomer(c, customerId, {
+                version:
+                  this.accountsService.summary(customerId).customer.version + 1,
               });
-            result.aggregateVersions[c.customerId] =
-              this.customersRepository.findById(c.customerId)!.version;
-            for (const order of this.ordersRepository.forCustomer(c.customerId))
-              result.aggregateVersions[order.id] = order.version;
-            this.auditRepository.insertEvent(c, {
-              id: randomUUID(),
-              customer_id: c.customerId,
-              order_id: c.orderId ?? null,
-              actor_id: actor.id,
-              actor_name: actor.name,
-              requested_by: requester.id,
-              action_id: c.id,
-              type: envelope.command.type,
-              payload: JSON.stringify(envelope.command.payload),
-              occurred_at: c.now,
-            });
+              for (const order of this.ordersRepository.forCustomer(customerId))
+                this.ordersRepository.updateOrder(c, order.id, {
+                  version: order.version + 1,
+                });
+              result.aggregateVersions[customerId] =
+                this.customersRepository.findById(customerId)!.version;
+              for (const order of this.ordersRepository.forCustomer(customerId))
+                result.aggregateVersions[order.id] = order.version;
+              this.auditRepository.insertEvent(c, {
+                id: randomUUID(),
+                customer_id: customerId,
+                order_id:
+                  customerId === c.customerId ? (c.orderId ?? null) : null,
+                actor_id: actor.id,
+                actor_name: actor.name,
+                requested_by: requester.id,
+                action_id: c.id,
+                type: envelope.command.type,
+                payload: JSON.stringify(envelope.command.payload),
+                occurred_at: c.now,
+              });
+            }
             result.review = this.auditService.review(c.customerId);
-            const failedChecks = result.review.checks.filter(
-              (check) => !check.passed,
-            );
+            const failedChecks = [...c.customerIds]
+              .flatMap(
+                (customerId) =>
+                  (customerId === c.customerId
+                    ? result.review!
+                    : this.auditService.review(customerId)
+                  ).checks,
+              )
+              .filter((check) => !check.passed);
             if (failedChecks.length)
               fail(
                 'ACCOUNT_INCONSISTENT',

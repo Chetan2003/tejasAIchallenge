@@ -14,7 +14,10 @@ export interface ActionContext {
   actor: User;
   requester: User;
   now: string;
+  /** The customer the command is filed under (its version is the one checked). */
   customerId: string;
+  /** Every customer whose books the command changes, including `customerId`. */
+  customerIds: Set<string>;
   orderId?: string;
   effects: ActionResult['effects'];
   references: Record<string, string>;
@@ -49,15 +52,21 @@ export function authorize(c: ActionContext, ...roles: Role[]) {
   if (!roles.includes(c.actor.role))
     fail('FORBIDDEN', 'This operation requires a different role');
 }
+/** Declare that the command changes this customer's books (versions, audit trail, invariant review). */
+export function touch(c: ActionContext, customerId: string) {
+  c.customerIds.add(customerId);
+}
 export function useOrder(c: ActionContext, order: OrderListRow | undefined) {
   if (!order) fail('NOT_FOUND', 'Order not found');
   c.customerId = order.customer_id;
+  touch(c, order.customer_id);
   c.orderId = order.id;
   return order;
 }
 export function useCustomer(c: ActionContext, customer: Customer | undefined) {
   if (!customer) fail('NOT_FOUND', 'Customer not found');
   c.customerId = customer.id;
+  touch(c, customer.id);
   return customer;
 }
 export function recordInsert(
