@@ -17,6 +17,7 @@
 | [Database infrastructure](database/README.md) | Owns the shared SQLite connection, Drizzle initialization, migration execution, and schema discovery for tooling.                        |
 | [Fulfillment](fulfillment/README.md)          | Owns physical shipments, loading quantities, dispatch evidence, incremental delivery confirmations, and authorized dispatch supplements. |
 | [Health](health/README.md)                    | Exposes a public database readiness check.                                                                                               |
+| [Rules](rules/README.md)                      | Owns the business rules about actions as data: roles, canonical rule references, declared events, and the event-to-reaction table.       |
 | [Orders](orders/README.md)                    | Owns commercial orders, immutable line revisions, revision approvals and rejections, and canceled demand.                                |
 | [Returns](returns/README.md)                  | Owns physical return documents, their returned quantities and values, and coordination of the resulting financial adjustments.           |
 | [Rewards](rewards/README.md)                  | Owns reward entitlement, point ledger buckets, redemption records, and recovery of entitlement that has already been spent.              |
