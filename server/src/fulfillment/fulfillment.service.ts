@@ -208,7 +208,8 @@ export class FulfillmentService {
           'The corrected quantity must be below the delivered quantity; confirm further deliveries separately',
         );
       if (
-        item.deliveredQty < this.returnsRepository.returnedForShipmentLine(line.id)
+        item.deliveredQty <
+        this.returnsRepository.returnedForShipmentLine(line.id)
       )
         fail(
           'BELOW_RETURNED',
@@ -226,7 +227,11 @@ export class FulfillmentService {
                   line.unit_price_paise,
               )
             : 0;
-          return { ...row, charge, correctable: Math.min(row.standing, carried) };
+          return {
+            ...row,
+            charge,
+            correctable: Math.min(row.standing, carried),
+          };
         })
         .filter((row) => row.correctable > 0);
       const chosen = item.confirmationId
