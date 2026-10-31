@@ -32,6 +32,10 @@ interface AuditRecord {
   receipt_id?: string;
   adjusts_id?: string;
   reversal_of_id?: string;
+  reverses_delivery_id?: string;
+  from_customer_id?: string;
+  to_customer_id?: string;
+  to_receipt_id?: string;
 }
 
 @Injectable()
@@ -70,7 +74,9 @@ export class AuditService {
       reason =
         row.kind === 'RETURN'
           ? `Returned goods reduce charge ${row.adjusts_id} by ${-Number(row.amount_paise)} paise; the original charge remains recorded.`
-          : row.kind === 'RETURN_FEE'
+          : row.kind === 'DELIVERY_CORRECTION'
+            ? `Delivery correction ${row.source_id} lowers charge ${row.adjusts_id} by ${-Number(row.amount_paise)} paise; the original charge remains recorded.`
+            : row.kind === 'RETURN_FEE'
             ? `Return ${row.source_id} incurs the recorded deduction of ${row.amount_paise} paise.`
             : `Confirmed delivery ${row.source_id} recognizes ${row.amount_paise} paise for shipment line ${row.shipment_line_id}; unconfirmed units create no charge.`;
     } else if (table === 'payment_allocations') {
@@ -95,11 +101,19 @@ export class AuditService {
     } else if (table === 'credit_funds') {
       reason = `Reserve ${row.amount_paise} paise of receipt ${row.receipt_id} for credit ${row.credit_note_id}, preventing reuse as unapplied cash.`;
     } else if (table === 'payment_receipts') {
-      reason = `Receive ${row.amount_paise} paise against customer ${row.customer_id}, reference ${row.reference}. No order is selected at capture.`;
+      reason =
+        c.command?.type === 'MOVE_CUSTOMER_PAYMENT'
+          ? `Receive ${row.amount_paise} paise against customer ${row.customer_id}, reference ${row.reference}, carried over from a payment first recorded against another customer.`
+          : `Receive ${row.amount_paise} paise against customer ${row.customer_id}, reference ${row.reference}. No order is selected at capture.`;
+    } else if (table === 'receipt_moves') {
+      reason = `Move ${row.amount_paise} paise of receipt ${row.receipt_id} from customer ${row.from_customer_id} to customer ${row.to_customer_id} as receipt ${row.to_receipt_id}. The original receipt stays on record and its value is no longer free cash.`;
     } else if (table === 'cancellations') {
       reason = `Cancel ${row.qty} unshipped units of line ${row.line_key}; dispatched and delivered quantities remain historical facts.`;
     } else if (table === 'deliveries') {
-      reason = `Confirm ${row.qty} delivered units on shipment line ${row.shipment_line_id}; each confirmation creates one incremental goods charge.`;
+      reason =
+        Number(row.qty) < 0
+          ? `Correct confirmation ${row.reverses_delivery_id} by ${-Number(row.qty)} units on shipment line ${row.shipment_line_id}; the correction creates one negative goods charge and the confirmation stays on record.`
+          : `Confirm ${row.qty} delivered units on shipment line ${row.shipment_line_id}; each confirmation creates one incremental goods charge.`;
     } else if (table === 'approvals') {
       reason = `${row.decision} applies specifically to commercial revision ${row.revision}.`;
     } else if (table === 'shipments') {

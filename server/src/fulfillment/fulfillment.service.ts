@@ -166,6 +166,125 @@ export class FulfillmentService {
 
     this.rewardsService.refresh(c, c.customerId);
   }
+  /**
+   * FDSK-170. Lower the delivered quantity of shipment lines to what really
+   * arrived. History is kept (WF-001): each correction is a negative delivery
+   * naming the confirmation it reduces, with one negative goods charge
+   * (WF-005). Anything that now over-settles that charge is given back to its
+   * source (WF-003). Cash is not re-allocated (WF-002); points are re-derived.
+   */
+  correctDelivery(c: Context, p: Payload<'CORRECT_DELIVERY'>) {
+    authorize(c, 'KAM', 'ADMIN');
+    const order = useOrder(c, this.ordersRepository.findById(p.orderId));
+    const shipment = this.fulfillmentRepository.findForOrder(
+      p.shipmentId,
+      order.id,
+    );
+    if (!shipment || !['DISPATCHED', 'DELIVERED'].includes(shipment.status))
+      fail('SHIPMENT_STATE', 'Select a dispatched or delivered shipment');
+    distinct(p.items.map((item) => item.shipmentLineId));
+    const questions: Array<{
+      key: string;
+      prompt: string;
+      options: Array<{ id: string; label: string }>;
+    }> = [];
+    const plan = p.items.map((item) => {
+      const line = this.fulfillmentRepository.findInShipment(
+        item.shipmentLineId,
+        shipment.id,
+      );
+      if (!line)
+        fail(
+          'LINE_NOT_FOUND',
+          'The shipment line does not belong to this shipment',
+        );
+      const delivered = this.fulfillmentRepository.deliveredForShipmentLine(
+        line.id,
+      );
+      const reduction = delivered - item.deliveredQty;
+      if (reduction <= 0)
+        fail(
+          'NOTHING_TO_CORRECT',
+          'The corrected quantity must be below the delivered quantity; confirm further deliveries separately',
+        );
+      if (
+        item.deliveredQty < this.returnsRepository.returnedForShipmentLine(line.id)
+      )
+        fail(
+          'BELOW_RETURNED',
+          'Delivered units cannot fall below the units already returned',
+        );
+      // A confirmation can only give back the units that its charge still carries.
+      const candidates = this.fulfillmentRepository
+        .confirmationsForShipmentLine(line.id)
+        .map((row) => {
+          const charge = this.accountsRepository.chargesForDelivery(row.id)[0];
+          const carried = charge
+            ? Math.floor(
+                (charge.amount_paise +
+                  this.accountsRepository.adjustmentsForCharge(charge.id)) /
+                  line.unit_price_paise,
+              )
+            : 0;
+          return { ...row, charge, correctable: Math.min(row.standing, carried) };
+        })
+        .filter((row) => row.correctable > 0);
+      const chosen = item.confirmationId
+        ? candidates.find((row) => row.id === item.confirmationId)
+        : candidates.length === 1
+          ? candidates[0]
+          : undefined;
+      if (item.confirmationId && !chosen)
+        fail(
+          'CONFIRMATION_NOT_FOUND',
+          'Select a confirmation of this line that still has delivered units',
+        );
+      if (!chosen)
+        questions.push({
+          key: `confirmation:${line.id}`,
+          prompt: `Which confirmation of ${line.line_key.slice(0, 8)} was overstated?`,
+          options: candidates.map((row) => ({
+            id: row.id,
+            label: `${row.created_at} · ${row.correctable} units`,
+          })),
+        });
+      else if (reduction > chosen.correctable)
+        fail(
+          'QUANTITY_EXCEEDED',
+          'The correction exceeds the units of the selected confirmation',
+        );
+      return { line, chosen, reduction };
+    });
+    if (questions.length) throw new Decision(questions);
+    for (const { line, chosen, reduction } of plan) {
+      const correctionId = randomUUID();
+      c.references.deliveryCorrectionId = correctionId;
+      this.fulfillmentRepository.insertDelivery(c, {
+        id: correctionId,
+        shipment_line_id: line.id,
+        order_id: order.id,
+        qty: -reduction,
+        reverses_delivery_id: chosen!.id,
+        action_id: c.id,
+        created_at: c.now,
+      });
+      this.accountsService.reduceCharge(
+        c,
+        chosen!.charge!,
+        safe(reduction * line.unit_price_paise),
+        { kind: 'DELIVERY_CORRECTION', sourceId: correctionId },
+      );
+    }
+    if (
+      shipment.status === 'DELIVERED' &&
+      this.fulfillmentRepository.undeliveredForShipment(shipment.id)
+    )
+      this.fulfillmentRepository.updateShipment(c, shipment.id, {
+        status: 'DISPATCHED',
+      });
+
+    this.rewardsService.refresh(c, c.customerId);
+  }
   correct(c: Context, p: Payload<'CORRECT_DISPATCHED_ORDER'>) {
     authorize(c, 'KAM', 'ADMIN');
     const order = useOrder(c, this.ordersRepository.findById(p.orderId));

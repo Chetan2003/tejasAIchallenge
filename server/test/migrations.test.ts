@@ -113,3 +113,69 @@ it('upgrades existing funded settlements without losing original records', () =>
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+it('keeps every delivery confirmation when deliveries become signed (0006)', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'crm-migration-'));
+  const sqlite = new Database(join(directory, 'signed.db'));
+  try {
+    sqlite.pragma('foreign_keys = ON');
+    const previous = join(directory, 'previous');
+    mkdirSync(join(previous, 'meta'), { recursive: true });
+    const journal = JSON.parse(
+      readFileSync(resolve('drizzle/meta/_journal.json'), 'utf8'),
+    ) as { entries: Array<{ idx: number; tag: string }> };
+    journal.entries = journal.entries.filter((entry) => entry.idx < 6);
+    for (const entry of journal.entries)
+      cpSync(
+        resolve(`drizzle/${entry.tag}.sql`),
+        join(previous, `${entry.tag}.sql`),
+      );
+    writeFileSync(
+      join(previous, 'meta/_journal.json'),
+      JSON.stringify(journal),
+    );
+    const db = drizzle(sqlite);
+    migrate(db, { migrationsFolder: previous });
+    sqlite.exec(`
+      insert into customers values ('c','SIGNED','Signed customer',1);
+      insert into skus values ('sku','SKU','Blend',10000,1000);
+      insert into orders values ('o','SO-SIGNED','c','APPROVED',1,1,'2026-10-01');
+      insert into shipments values ('s','o',1,'DELIVERED',null,null,'2026-10-01','2026-10-01');
+      insert into shipment_lines values ('line','s','o','key','sku',10,10,10000,1000);
+      insert into deliveries values ('d1','line','o',4,'old-action','2026-10-02');
+      insert into deliveries values ('d2','line','o',6,'old-action','2026-10-03');
+    `);
+    const before = sqlite.prepare('select * from deliveries order by id').all();
+    migrate(db, { migrationsFolder: resolve('drizzle') });
+    migrate(db, { migrationsFolder: resolve('drizzle') });
+    const after = sqlite
+      .prepare('select * from deliveries order by id')
+      .all() as Array<Record<string, unknown>>;
+    assert.equal(after.length, before.length);
+    for (const [index, row] of (
+      before as Array<Record<string, unknown>>
+    ).entries()) {
+      for (const key of Object.keys(row))
+        assert.deepEqual(after[index]![key], row[key], `deliveries.${key}`);
+      assert.equal(after[index]!.reverses_delivery_id, null);
+    }
+    // A correction is a negative row that names what it reduces; nothing else may be non-positive.
+    sqlite.exec(
+      `insert into deliveries values ('d3','line','o',-4,'d2','new-action','2026-10-04')`,
+    );
+    assert.throws(() =>
+      sqlite.exec(
+        `insert into deliveries values ('bad','line','o',-1,null,'new-action','2026-10-04')`,
+      ),
+    );
+    assert.throws(() =>
+      sqlite.exec(
+        `insert into deliveries values ('zero','line','o',0,'d2','new-action','2026-10-04')`,
+      ),
+    );
+    assert.deepEqual(sqlite.pragma('foreign_key_check'), []);
+  } finally {
+    sqlite.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

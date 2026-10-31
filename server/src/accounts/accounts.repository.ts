@@ -255,7 +255,11 @@ export class AccountsRepository {
       .where(
         and(
           eq(crmReceivableEntries.source_id, deliveryId),
-          inArray(crmReceivableEntries.kind, ['DELIVERY', 'CORRECTION']),
+          inArray(crmReceivableEntries.kind, [
+            'DELIVERY',
+            'CORRECTION',
+            'DELIVERY_CORRECTION',
+          ]),
         ),
       )
       .orderBy(insertionOrder(crmReceivableEntries))

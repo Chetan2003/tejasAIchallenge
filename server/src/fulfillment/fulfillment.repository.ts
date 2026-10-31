@@ -4,6 +4,7 @@ import {
   count,
   eq,
   getTableColumns,
+  gt,
   isNotNull,
   ne,
   sum,
@@ -115,6 +116,34 @@ export class FulfillmentRepository {
         .where(eq(crmDeliveries.shipment_line_id, lineId))
         .get()?.value ?? 0,
     );
+  }
+  /** Net units already taken back from one confirmation by corrections (zero or negative). */
+  reversedForDelivery(deliveryId: string) {
+    return safe(
+      this.db
+        .select({ value: sum(crmDeliveries.qty).mapWith(Number) })
+        .from(crmDeliveries)
+        .where(eq(crmDeliveries.reverses_delivery_id, deliveryId))
+        .get()?.value ?? 0,
+    );
+  }
+  /** Confirmations of a shipment line, oldest first, with the units each still stands for. */
+  confirmationsForShipmentLine(lineId: string) {
+    return this.db
+      .select()
+      .from(crmDeliveries)
+      .where(
+        and(
+          eq(crmDeliveries.shipment_line_id, lineId),
+          gt(crmDeliveries.qty, 0),
+        ),
+      )
+      .orderBy(insertionOrder(crmDeliveries))
+      .all()
+      .map((row) => ({
+        ...row,
+        standing: safe(row.qty + this.reversedForDelivery(row.id)),
+      }));
   }
   undeliveredForShipment(shipmentId: string) {
     return safe(
