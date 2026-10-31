@@ -64,16 +64,16 @@ $$
 
 ## 2. Sub-problems
 
-| #   | Sub-problem                                                                  | Rules                  | Owner module                                                        |
-| --- | ---------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------- |
-| S1  | Reduce a charge and give back what over-settles it (cash → credit → points) | WF-003, ACC-001        | Accounts. **Extract from Returns, shared by returns and FDSK-170.** |
-| S2  | Signed delivery + one signed charge per confirmation                         | WF-005, FUL-001        | Fulfillment                                                         |
-| S3  | Reopen shipment when delivered < dispatched                                  | FUL-006                | Fulfillment                                                         |
-| S4  | Pick the confirmation to reduce, or ask                                      | brief 7.2              | Fulfillment                                                         |
-| S5  | Release a receipt's allocations, record the move, create the new receipt     | ACC-002, CUS-001, WF-001 | Accounts                                                          |
-| S6  | One definition of "free cash" ($u_i$), used by allocation, credit, summary, audit | ACC-002           | Accounts model                                                      |
-| S7  | Allocation and reward refresh on the correct customers                       | WF-002, REW-001..003   | Engine                                                              |
-| S8  | Versions, audit events and review for all affected customers                 | WF-001                 | Engine                                                              |
+| #   | Sub-problem                                                                       | Rules                    | Owner module                                                        |
+| --- | --------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------- |
+| S1  | Reduce a charge and give back what over-settles it (cash → credit → points)       | WF-003, ACC-001          | Accounts. **Extract from Returns, shared by returns and FDSK-170.** |
+| S2  | Signed delivery + one signed charge per confirmation                              | WF-005, FUL-001          | Fulfillment                                                         |
+| S3  | Reopen shipment when delivered < dispatched                                       | FUL-006                  | Fulfillment                                                         |
+| S4  | Pick the confirmation to reduce, or ask                                           | brief 7.2                | Fulfillment                                                         |
+| S5  | Release a receipt's allocations, record the move, create the new receipt          | ACC-002, CUS-001, WF-001 | Accounts                                                            |
+| S6  | One definition of "free cash" ($u_i$), used by allocation, credit, summary, audit | ACC-002                  | Accounts model                                                      |
+| S7  | Allocation and reward refresh on the correct customers                            | WF-002, REW-001..003     | Engine                                                              |
+| S8  | Versions, audit events and review for all affected customers                      | WF-001                   | Engine                                                              |
 
 ## 3. Data model changes (one migration)
 

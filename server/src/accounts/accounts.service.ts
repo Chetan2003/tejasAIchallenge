@@ -1,5 +1,5 @@
-import { ChargeBalance } from './accounts.model.js';
-import type { ReceivableEntry } from './accounts.model.js';
+import { ChargeBalance, ReceiptBalance } from './accounts.model.js';
+import type { ReceivableEntry, Receipt } from './accounts.model.js';
 import { CreditBalance } from '../credits/credits.model.js';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -45,17 +45,17 @@ export class AccountsService {
       created_at: c.now,
     });
 
-    this.allocateCash(c);
+    this.allocateCash(c, c.customerId);
 
-    this.rewardsService.refresh(c);
+    this.rewardsService.refresh(c, c.customerId);
   }
   allocate(c: Context, p: Payload<'ALLOCATE_PAYMENT'>) {
     authorize(c, 'ACCOUNTS', 'ADMIN');
     useCustomer(c, this.customersRepository.findById(p.customerId));
 
-    this.allocateCash(c);
+    this.allocateCash(c, c.customerId);
 
-    this.rewardsService.refresh(c);
+    this.rewardsService.refresh(c, c.customerId);
   }
   /**
    * WF-003 core, shared by every operation that lowers a charge after it was
@@ -159,18 +159,24 @@ export class AccountsService {
     }
     return released;
   }
-  allocateCash(c: Context) {
+  /** ACC-002: where a receipt's value currently sits. The single definition of free cash. */
+  receiptBalance(receipt: Receipt) {
+    return new ReceiptBalance(
+      receipt.amount_paise,
+      this.accountsRepository.allocatedFromReceipt(receipt.id),
+      this.creditsRepository.reservedFromReceipt(receipt.id),
+      this.accountsRepository.movedFromReceipt(receipt.id),
+    );
+  }
+  allocateCash(c: Context, customerId: string) {
     for (const receipt of this.accountsRepository.receiptsForCustomer(
-      c.customerId,
+      customerId,
     )) {
-      let available =
-        receipt.amount_paise -
-        this.accountsRepository.allocatedFromReceipt(receipt.id) -
-        this.creditsRepository.reservedFromReceipt(receipt.id);
+      let available = this.receiptBalance(receipt).freePaise;
       if (available < 0)
         fail('RECEIPT_MISMATCH', 'Receipt allocations exceed captured funds');
       for (const charge of this.accountsRepository.chargesInDueOrder(
-        c.customerId,
+        customerId,
       )) {
         if (!available) break;
         const face =
@@ -186,7 +192,7 @@ export class AccountsService {
         if (take)
           this.accountsRepository.insertAllocation(c, {
             id: randomUUID(),
-            customer_id: c.customerId,
+            customer_id: customerId,
             receipt_id: receipt.id,
             charge_id: charge.id,
             amount_paise: take,
@@ -242,11 +248,7 @@ export class AccountsService {
     const receipts = this.accountsRepository.receiptsByInsertion(customerId);
     const unappliedCashPaise = safe(
       receipts.reduce(
-        (sum, receipt) =>
-          sum +
-          receipt.amount_paise -
-          this.accountsRepository.allocatedFromReceipt(receipt.id) -
-          this.creditsRepository.reservedFromReceipt(receipt.id),
+        (sum, receipt) => sum + this.receiptBalance(receipt).freePaise,
         0,
       ),
     );
@@ -282,6 +284,7 @@ export class AccountsService {
     return {
       finance: this.accountsRepository.entriesForCustomer(customerId),
       receipts: this.accountsRepository.receiptsByInsertion(customerId),
+      receiptMoves: this.accountsRepository.movesForCustomer(customerId),
       allocations: this.accountsRepository.allocationsForCustomer(customerId),
       creditApplications:
         this.creditsRepository.applicationsForCustomer(customerId),

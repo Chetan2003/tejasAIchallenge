@@ -3,6 +3,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { CustomersRepository } from '../customers/customers.repository.js';
 import { AccountsRepository } from '../accounts/accounts.repository.js';
+import { AccountsService } from '../accounts/accounts.service.js';
 import { CreditsRepository } from '../credits/credits.repository.js';
 import { RewardsRepository } from '../rewards/rewards.repository.js';
 import type { ActionContext as Context, Payload } from '../common/domain.js';
@@ -13,6 +14,7 @@ export class CreditsService {
   constructor(
     private readonly customersRepository: CustomersRepository,
     private readonly accountsRepository: AccountsRepository,
+    private readonly accountsService: AccountsService,
     private readonly creditsRepository: CreditsRepository,
     private readonly rewardsRepository: RewardsRepository,
   ) {}
@@ -23,10 +25,7 @@ export class CreditsService {
     const funds = this.accountsRepository
       .receiptsByInsertion(c.customerId)
       .map((receipt) => {
-        const free =
-          receipt.amount_paise -
-          this.accountsRepository.allocatedFromReceipt(receipt.id) -
-          this.creditsRepository.reservedFromReceipt(receipt.id);
+        const free = this.accountsService.receiptBalance(receipt).freePaise;
         available = safe(available + free);
         return { id: receipt.id, free };
       });

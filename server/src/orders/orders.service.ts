@@ -248,7 +248,7 @@ export class OrdersService {
     )
       this.ordersRepository.updateOrder(c, order.id, { status: 'CANCELLED' });
 
-    this.rewardsService.refresh(c);
+    this.rewardsService.refresh(c, c.customerId);
   }
   detail(id: string): OrderDetail {
     const order = this.ordersRepository.findById(id);

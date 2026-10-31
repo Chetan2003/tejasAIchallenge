@@ -162,9 +162,9 @@ export class FulfillmentService {
         status: 'DELIVERED',
       });
 
-    this.accountsService.allocateCash(c);
+    this.accountsService.allocateCash(c, c.customerId);
 
-    this.rewardsService.refresh(c);
+    this.rewardsService.refresh(c, c.customerId);
   }
   correct(c: Context, p: Payload<'CORRECT_DISPATCHED_ORDER'>) {
     authorize(c, 'KAM', 'ADMIN');
@@ -357,9 +357,9 @@ export class FulfillmentService {
       }
     }
 
-    this.accountsService.allocateCash(c);
+    this.accountsService.allocateCash(c, c.customerId);
 
-    this.rewardsService.refresh(c);
+    this.rewardsService.refresh(c, c.customerId);
   }
   forOrder(orderId: string) {
     if (!this.ordersRepository.findById(orderId))

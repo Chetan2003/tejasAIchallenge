@@ -1,5 +1,5 @@
 import { Injectable, Module } from '@nestjs/common';
-import { and, asc, desc, eq, gt, inArray, lt, min, sum } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, lt, min, or, sum } from 'drizzle-orm';
 import { DatabaseService } from '../database/database.service.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { insertionOrder } from '../database/query-order.js';
@@ -9,6 +9,7 @@ import {
   crmReceivableEntries,
   crmPaymentReceipts,
   crmPaymentAllocations,
+  crmReceiptMoves,
 } from '../accounts/accounts.model.js';
 
 @Injectable()
@@ -173,14 +174,68 @@ export class AccountsRepository {
       .orderBy(insertionOrder(crmReceivableEntries))
       .all();
   }
+  /** Receipts recorded for the customer, less value moved to another customer (ACC-004). */
   receivedForCustomer(customerId: string) {
     return safe(
-      this.db
+      (this.db
         .select({ value: sum(crmPaymentReceipts.amount_paise).mapWith(Number) })
         .from(crmPaymentReceipts)
         .where(eq(crmPaymentReceipts.customer_id, customerId))
+        .get()?.value ?? 0) - this.movedFromCustomer(customerId),
+    );
+  }
+  findReceipt(id: string) {
+    return this.db
+      .select()
+      .from(crmPaymentReceipts)
+      .where(eq(crmPaymentReceipts.id, id))
+      .get();
+  }
+  movedFromReceipt(receiptId: string) {
+    return safe(
+      this.db
+        .select({ value: sum(crmReceiptMoves.amount_paise).mapWith(Number) })
+        .from(crmReceiptMoves)
+        .where(eq(crmReceiptMoves.receipt_id, receiptId))
         .get()?.value ?? 0,
     );
+  }
+  movedFromCustomer(customerId: string) {
+    return safe(
+      this.db
+        .select({ value: sum(crmReceiptMoves.amount_paise).mapWith(Number) })
+        .from(crmReceiptMoves)
+        .where(eq(crmReceiptMoves.from_customer_id, customerId))
+        .get()?.value ?? 0,
+    );
+  }
+  movesForCustomer(customerId: string) {
+    return this.db
+      .select()
+      .from(crmReceiptMoves)
+      .where(
+        or(
+          eq(crmReceiptMoves.from_customer_id, customerId),
+          eq(crmReceiptMoves.to_customer_id, customerId),
+        ),
+      )
+      .orderBy(insertionOrder(crmReceiptMoves))
+      .all();
+  }
+  /** Net cash a receipt currently settles, per charge (positive only). */
+  cashByChargeForReceipt(receiptId: string) {
+    return this.db
+      .select({
+        charge_id: crmPaymentAllocations.charge_id,
+        n: sum(crmPaymentAllocations.amount_paise).mapWith(Number),
+      })
+      .from(crmPaymentAllocations)
+      .where(eq(crmPaymentAllocations.receipt_id, receiptId))
+      .groupBy(crmPaymentAllocations.charge_id)
+      .having(gt(sum(crmPaymentAllocations.amount_paise), 0))
+      .orderBy(asc(min(insertionOrder(crmPaymentAllocations))))
+      .all()
+      .map((row) => ({ ...row, n: safe(row.n ?? 0) }));
   }
   postedForCustomer(customerId: string) {
     return safe(
@@ -241,6 +296,13 @@ export class AccountsRepository {
   insertReceipt(c: ActionContext, row: typeof crmPaymentReceipts.$inferInsert) {
     this.db.insert(crmPaymentReceipts).values(row).run();
     recordInsert(c, 'payment_receipts', row, false);
+  }
+  insertReceiptMove(
+    c: ActionContext,
+    row: typeof crmReceiptMoves.$inferInsert,
+  ) {
+    this.db.insert(crmReceiptMoves).values(row).run();
+    recordInsert(c, 'receipt_moves', row, true);
   }
   insertAllocation(
     c: ActionContext,

@@ -319,21 +319,19 @@ export class AuditService {
     for (const receipt of this.accountsRepository.receiptsByInsertion(
       customerId,
     )) {
-      const allocated = this.accountsRepository.allocatedFromReceipt(
-        receipt.id,
-      );
-      const reserved = this.creditsRepository.reservedFromReceipt(receipt.id);
+      const balance = this.accountsService.receiptBalance(receipt);
       const invalidPairs = this.accountsRepository.invalidReceiptAllocations(
         receipt.id,
       );
       check(
         `cash:${receipt.id}`,
-        'Receipt cash is allocated or reserved at most once',
-        allocated >= 0 &&
-          reserved >= 0 &&
-          allocated + reserved <= receipt.amount_paise &&
+        'Receipt cash is allocated, reserved or moved at most once',
+        balance.allocatedPaise >= 0 &&
+          balance.reservedPaise >= 0 &&
+          balance.movedPaise >= 0 &&
+          balance.freePaise >= 0 &&
           invalidPairs === 0,
-        `Received ${receipt.amount_paise}; allocated ${allocated}; reserved ${reserved} paise.`,
+        `Received ${balance.receivedPaise}; allocated ${balance.allocatedPaise}; reserved ${balance.reservedPaise}; moved ${balance.movedPaise} paise.`,
         [receipt.id],
       );
     }

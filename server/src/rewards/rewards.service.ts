@@ -73,8 +73,8 @@ export class RewardsService {
       created_at: c.now,
     });
   }
-  refresh(c: Context) {
-    for (const orderRow of this.ordersRepository.forCustomer(c.customerId)) {
+  refresh(c: Context, customerId: string) {
+    for (const orderRow of this.ordersRepository.forCustomer(customerId)) {
       for (const lineRow of this.ordersRepository.currentLines(
         orderRow.id,
         orderRow.current_revision,
@@ -115,7 +115,7 @@ export class RewardsService {
         if (earned !== previousEarned)
           this.rewardsRepository.insertPosting(c, {
             id: randomUUID(),
-            customer_id: c.customerId,
+            customer_id: customerId,
             line_key: lineRow.line_key,
             bucket: 'AVAILABLE',
             points_delta: earned - previousEarned,
@@ -129,7 +129,7 @@ export class RewardsService {
         if (entitled - earned !== previousLocked)
           this.rewardsRepository.insertPosting(c, {
             id: randomUUID(),
-            customer_id: c.customerId,
+            customer_id: customerId,
             line_key: lineRow.line_key,
             bucket: 'LOCKED',
             points_delta: entitled - earned - previousLocked,
@@ -139,14 +139,13 @@ export class RewardsService {
           });
       }
     }
-    const spendable = this.rewardsRepository.availableForCustomer(c.customerId);
-    const outstandingClawback = this.rewardsRepository.debtForCustomer(
-      c.customerId,
-    );
+    const spendable = this.rewardsRepository.availableForCustomer(customerId);
+    const outstandingClawback =
+      this.rewardsRepository.debtForCustomer(customerId);
     if (spendable < 0) {
       this.rewardsRepository.insertPosting(c, {
         id: randomUUID(),
-        customer_id: c.customerId,
+        customer_id: customerId,
         line_key: null,
         bucket: 'AVAILABLE',
         points_delta: -spendable,
@@ -156,7 +155,7 @@ export class RewardsService {
       });
       this.rewardsRepository.insertPosting(c, {
         id: randomUUID(),
-        customer_id: c.customerId,
+        customer_id: customerId,
         line_key: null,
         bucket: 'CLAWBACK_PENDING',
         points_delta: -spendable,
@@ -168,7 +167,7 @@ export class RewardsService {
       const offset = Math.min(outstandingClawback, spendable);
       this.rewardsRepository.insertPosting(c, {
         id: randomUUID(),
-        customer_id: c.customerId,
+        customer_id: customerId,
         line_key: null,
         bucket: 'AVAILABLE',
         points_delta: -offset,
@@ -178,7 +177,7 @@ export class RewardsService {
       });
       this.rewardsRepository.insertPosting(c, {
         id: randomUUID(),
-        customer_id: c.customerId,
+        customer_id: customerId,
         line_key: null,
         bucket: 'CLAWBACK_PENDING',
         points_delta: -offset,

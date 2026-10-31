@@ -36,14 +36,14 @@ This is the same mechanism as the existing return settlement (WF-003) without th
 
 These are the things I could not yet answer from the rules. Draft 2 resolves them.
 
-| #   | Question                                                                                                                                                                 |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| #   | Question                                                                                                                                                                     |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Q1  | How is a receipt "moved" without editing it? `payment_receipts.amount_paise` is checked `> 0` and receipts are never updated. Options: a transfer table, or signed receipts. |
-| Q2  | How is a delivery "un-confirmed"? `deliveries.qty` is checked `> 0`. Same question.                                                                                      |
-| Q3  | An action currently carries one `customerId`. FDSK-169 changes two customers. Where do versions, audit events and invariant reviews hook in?                           |
-| Q4  | Which delivery confirmation is "wrong" when a line has several? Is that an ambiguity question to the user (rule 7.2 in the brief), or a default?                        |
-| Q5  | Does cash released by FDSK-170 go back to open charges immediately? WF-002 lists the allocation occasions, and a correction is not one of them.                          |
-| Q6  | What if the receipt already funds a credit note? CUS-001 says credit funding cannot cross customers.                                                                    |
+| Q2  | How is a delivery "un-confirmed"? `deliveries.qty` is checked `> 0`. Same question.                                                                                          |
+| Q3  | An action currently carries one `customerId`. FDSK-169 changes two customers. Where do versions, audit events and invariant reviews hook in?                                 |
+| Q4  | Which delivery confirmation is "wrong" when a line has several? Is that an ambiguity question to the user (rule 7.2 in the brief), or a default?                             |
+| Q5  | Does cash released by FDSK-170 go back to open charges immediately? WF-002 lists the allocation occasions, and a correction is not one of them.                              |
+| Q6  | What if the receipt already funds a credit note? CUS-001 says credit funding cannot cross customers.                                                                         |
 
 ## 5. Risks I expect
 

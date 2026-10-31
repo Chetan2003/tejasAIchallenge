@@ -148,9 +148,9 @@ export class ReturnsService {
           });
     }
 
-    this.accountsService.allocateCash(c);
+    this.accountsService.allocateCash(c, c.customerId);
 
-    this.rewardsService.refresh(c);
+    this.rewardsService.refresh(c, c.customerId);
   }
   forCustomer(customerId: string) {
     if (!this.customersRepository.findById(customerId))
