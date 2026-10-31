@@ -1,4 +1,5 @@
 import { ChargeBalance } from './accounts.model.js';
+import type { ReceivableEntry } from './accounts.model.js';
 import { CreditBalance } from '../credits/credits.model.js';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -55,6 +56,108 @@ export class AccountsService {
     this.allocateCash(c);
 
     this.rewardsService.refresh(c);
+  }
+  /**
+   * WF-003 core, shared by every operation that lowers a charge after it was
+   * posted (returns, delivery corrections). Appends a signed adjustment, then
+   * releases whatever now over-settles the charge in canonical order: cash,
+   * then credit, then points. Each release is a signed entry that restores the
+   * amount to its original source. Returns the released cash per receipt, in
+   * release order, so the caller decides what that cash becomes.
+   */
+  reduceCharge(
+    c: Context,
+    charge: ReceivableEntry,
+    reduction: number,
+    adjustment: { kind: string; sourceId: string },
+  ): Map<string, number> {
+    const face =
+      charge.amount_paise +
+      this.accountsRepository.adjustmentsForCharge(charge.id);
+    this.accountsRepository.insertCharge(c, {
+      id: randomUUID(),
+      customer_id: charge.customer_id,
+      order_id: charge.order_id,
+      line_key: charge.line_key,
+      shipment_line_id: charge.shipment_line_id,
+      kind: adjustment.kind,
+      amount_paise: -reduction,
+      adjusts_id: charge.id,
+      source_id: adjustment.sourceId,
+      action_id: c.id,
+      created_at: c.now,
+    });
+    const cash = this.accountsRepository.cashForCharge(charge.id);
+    const credits = this.creditsRepository.appliedToCharge(charge.id);
+    const points = this.rewardsRepository.redeemedForCharge(charge.id);
+    let overage = Math.max(0, cash + credits + points - (face - reduction));
+    const released = new Map<string, number>();
+    for (const allocation of this.accountsRepository.cashByReceiptForCharge(
+      charge.id,
+    )) {
+      const take = Math.min(overage, allocation.n);
+      if (!take) continue;
+      this.accountsRepository.insertAllocation(c, {
+        id: randomUUID(),
+        customer_id: charge.customer_id,
+        receipt_id: allocation.receipt_id,
+        charge_id: charge.id,
+        amount_paise: -take,
+        action_id: c.id,
+        created_at: c.now,
+      });
+      released.set(
+        allocation.receipt_id,
+        (released.get(allocation.receipt_id) ?? 0) + take,
+      );
+      overage -= take;
+    }
+    for (const application of this.creditsRepository.creditByNoteForCharge(
+      charge.id,
+    )) {
+      const take = Math.min(overage, application.n);
+      if (!take) continue;
+      this.creditsRepository.insertApplication(c, {
+        id: randomUUID(),
+        customer_id: charge.customer_id,
+        credit_note_id: application.credit_note_id,
+        charge_id: charge.id,
+        amount_paise: -take,
+        action_id: c.id,
+        created_at: c.now,
+      });
+      overage -= take;
+    }
+    if (overage > 0) {
+      if (overage > points)
+        fail(
+          'SETTLEMENT_MISMATCH',
+          'The change cannot be settled against its source documents',
+        );
+      this.rewardsRepository.insertRedemption(c, {
+        id: randomUUID(),
+        customer_id: charge.customer_id,
+        charge_id: charge.id,
+        points: -overage,
+        action_id: c.id,
+        created_at: c.now,
+      });
+      for (const [bucket, delta] of [
+        ['AVAILABLE', overage],
+        ['REDEEMED', -overage],
+      ] as const)
+        this.rewardsRepository.insertPosting(c, {
+          id: randomUUID(),
+          customer_id: charge.customer_id,
+          line_key: null,
+          bucket,
+          points_delta: delta,
+          source_id: adjustment.sourceId,
+          action_id: c.id,
+          created_at: c.now,
+        });
+    }
+    return released;
   }
   allocateCash(c: Context) {
     for (const receipt of this.accountsRepository.receiptsForCustomer(
