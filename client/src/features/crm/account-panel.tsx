@@ -13,7 +13,7 @@ export function AccountPanel({
   snapshot: CustomerSnapshot;
   rewards?: boolean;
 }) {
-  const { actor } = useCrm();
+  const { actor, data } = useCrm();
   const [tab, setTab] = useState('receipts');
   const [action, setAction] = useState<{
     type: CommandType;
@@ -173,14 +173,57 @@ export function AccountPanel({
           />
           {tab === 'receipts' &&
             (ledger.receipts.length ? (
-              <Table columns={['Received', 'Payment reference', 'Amount']}>
-                {[...ledger.receipts].reverse().map((row) => (
-                  <tr key={String(row.id)}>
-                    <td>{date(row.created_at)}</td>
-                    <td className="font-medium">{String(row.reference)}</td>
-                    <td>{money(Number(row.amount_paise))}</td>
-                  </tr>
-                ))}
+              <Table
+                columns={['Received', 'Payment reference', 'Amount', 'Status']}
+              >
+                {[...ledger.receipts].reverse().map((row) => {
+                  const movedAway = ledger.receiptMoves.find(
+                    (move) => move.receipt_id === row.id,
+                  );
+                  const movedIn = ledger.receiptMoves.find(
+                    (move) => move.to_receipt_id === row.id,
+                  );
+                  const customerName = (id: unknown) =>
+                    data?.customers.find((customer) => customer.id === id)
+                      ?.name ?? 'another customer';
+                  return (
+                    <tr key={String(row.id)}>
+                      <td>{date(row.created_at)}</td>
+                      <td className="font-medium">{String(row.reference)}</td>
+                      <td>{money(Number(row.amount_paise))}</td>
+                      <td>
+                        {movedAway ? (
+                          <span className="text-muted-foreground">
+                            Moved to {customerName(movedAway.to_customer_id)}
+                          </span>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {movedIn && (
+                              <span className="text-muted-foreground">
+                                Moved from{' '}
+                                {customerName(movedIn.from_customer_id)}
+                              </span>
+                            )}
+                            {accounts && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  setAction({
+                                    type: 'MOVE_CUSTOMER_PAYMENT',
+                                    entryId: String(row.id),
+                                  })
+                                }
+                              >
+                                Move to another customer
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </Table>
             ) : (
               <Empty

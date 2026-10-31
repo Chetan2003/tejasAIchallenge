@@ -268,6 +268,25 @@ export function OrderDetailPage() {
                         Dispatch shipment
                       </Button>
                     )}
+                    {commercial &&
+                      ['DISPATCHED', 'DELIVERED'].includes(shipment.status) &&
+                      shipment.lines.some(
+                        (line) => line.delivered > line.returned,
+                      ) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!ready}
+                          onClick={() =>
+                            setAction({
+                              type: 'CORRECT_DELIVERY',
+                              shipmentId: shipment.id,
+                            })
+                          }
+                        >
+                          Correct delivered quantity
+                        </Button>
+                      )}
                     {warehouse && shipment.status === 'DISPATCHED' && (
                       <Button
                         size="sm"

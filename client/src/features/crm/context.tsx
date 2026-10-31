@@ -98,6 +98,7 @@ export function useCommand() {
     command: CrmCommand,
     expectedVersion: number,
     message: string,
+    onDecision?: (decisions: ActionResult['decisions']) => void,
   ) {
     setPending(true);
     setError('');
@@ -122,6 +123,10 @@ export function useCommand() {
         body: JSON.stringify(envelope),
       });
       last.current = null;
+      if (result.status === 'NEEDS_DECISION' && onDecision) {
+        onDecision(result.decisions);
+        return null;
+      }
       if (result.status !== 'APPLIED')
         throw new Error(
           result.errors.map((row) => row.message).join(' ') ||

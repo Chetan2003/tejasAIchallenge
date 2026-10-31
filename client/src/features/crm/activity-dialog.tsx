@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { crmActionSchema } from '@crm/shared/crm';
 import type {
+  ActionResult,
   CommandType,
   CustomerSnapshot,
   OrderDetail,
@@ -29,6 +30,8 @@ const titles: Partial<Record<CommandType, string>> = {
   CANCEL_REMAINDER: 'Cancel unshipped items',
   RECORD_RETURN: 'Record a return',
   CORRECT_DISPATCHED_ORDER: 'Record shipment correction',
+  CORRECT_DELIVERY: 'Correct delivered quantity',
+  MOVE_CUSTOMER_PAYMENT: 'Move payment',
   RECEIVE_CUSTOMER_PAYMENT: 'Record payment',
   ALLOCATE_PAYMENT: 'Allocate available cash',
   REDEEM_POINTS: 'Redeem reward points',
@@ -57,6 +60,7 @@ export function ActivityDialog({
   const command = useCommand();
   const [error, setError] = useState('');
   const [physical, setPhysical] = useState('');
+  const [decisions, setDecisions] = useState<ActionResult['decisions']>([]);
   const summary = snapshot.summary;
   const shipment = detail?.shipments.find((row) => row.id === shipmentId);
   const quantities = [
@@ -73,6 +77,8 @@ export function ActivityDialog({
     'REVERSE_CREDIT_APPLICATION',
     'REVERSE_CREDIT_REFUND',
     'CORRECT_DISPATCHED_ORDER',
+    'CORRECT_DELIVERY',
+    'MOVE_CUSTOMER_PAYMENT',
   ].includes(type);
   const amountNeeded = [
     'RECEIVE_CUSTOMER_PAYMENT',
@@ -125,6 +131,9 @@ export function ActivityDialog({
               })),
             )
             .filter((line) => line.limit > 0);
+  const movingReceipt = snapshot.ledger.receipts.find(
+    (row) => row.id === entryId,
+  );
   const selectedCredit = summary.credits.find((row) => row.id === entryId);
   const reversalEntry =
     type === 'REVERSE_CREDIT_APPLICATION'
@@ -144,6 +153,7 @@ export function ActivityDialog({
       'CANCEL_REMAINDER',
       'RECORD_RETURN',
       'CORRECT_DISPATCHED_ORDER',
+      'CORRECT_DELIVERY',
     ].includes(type);
     const payload: Record<string, unknown> = orderAction
       ? { orderId: detail!.order.id }
@@ -165,7 +175,11 @@ export function ActivityDialog({
         return;
       }
     }
-    if (type === 'DISPATCH_SHIPMENT' || type === 'CONFIRM_DELIVERY')
+    if (
+      type === 'DISPATCH_SHIPMENT' ||
+      type === 'CONFIRM_DELIVERY' ||
+      type === 'CORRECT_DELIVERY'
+    )
       payload.shipmentId = shipmentId;
     try {
       if (type === 'RECORD_RETURN') payload.feePaise = paise(form.get('fee'));
@@ -174,6 +188,26 @@ export function ActivityDialog({
       if (creditNeeded) payload.creditNoteId = entryId ?? form.get('credit');
       if (chargeNeeded) payload.chargeId = form.get('charge');
       if (type === 'REDEEM_POINTS') payload.points = Number(form.get('points'));
+      if (type === 'MOVE_CUSTOMER_PAYMENT') {
+        payload.receiptId = entryId;
+        payload.toCustomerId = form.get('toCustomer');
+      }
+      if (type === 'CORRECT_DELIVERY') {
+        payload.items = (shipment?.lines ?? [])
+          .filter(
+            (line) => Number(form.get(`delivered-${line.id}`)) < line.delivered,
+          )
+          .map((line) => ({
+            shipmentLineId: line.id,
+            deliveredQty: Number(form.get(`delivered-${line.id}`)),
+            confirmationId:
+              String(form.get(`confirmation-${line.id}`) ?? '') || undefined,
+          }));
+        if (!(payload.items as unknown[]).length) {
+          setError('Lower the delivered quantity of at least one item.');
+          return;
+        }
+      }
       if (type === 'REVERSE_CREDIT_APPLICATION')
         payload.applicationId = entryId;
       if (type === 'REVERSE_CREDIT_REFUND') payload.refundId = entryId;
@@ -205,6 +239,7 @@ export function ActivityDialog({
         parsed.data,
         orderAction ? detail!.order.version : summary.customer.version,
         `${titles[type] ?? 'Activity'} completed.`,
+        setDecisions,
       );
       if (result) onClose();
     } catch (failure) {
@@ -222,7 +257,9 @@ export function ActivityDialog({
     >
       <DialogContent
         className={
-          quantities || type === 'CORRECT_DISPATCHED_ORDER'
+          quantities ||
+          type === 'CORRECT_DISPATCHED_ORDER' ||
+          type === 'CORRECT_DELIVERY'
             ? 'max-w-3xl bg-white'
             : 'bg-white'
         }
@@ -273,6 +310,100 @@ export function ActivityDialog({
                 Allocate up to {money(summary.unappliedCashPaise)} of available
                 cash to this customer's oldest outstanding charges.
               </p>
+            )}
+            {type === 'MOVE_CUSTOMER_PAYMENT' && movingReceipt && (
+              <>
+                <p className="rounded-md bg-muted p-3 text-sm">
+                  Payment <strong>{String(movingReceipt.reference)}</strong> of{' '}
+                  <strong>{money(Number(movingReceipt.amount_paise))}</strong>{' '}
+                  is recorded against {summary.customer.name}. The original
+                  stays in history; the cash it settled here is released and the
+                  same payment is recorded on the customer you choose.
+                </p>
+                <Field name="toCustomer" label="Customer who actually paid">
+                  <NativeSelect
+                    id="toCustomer"
+                    name="toCustomer"
+                    required
+                    className="w-full"
+                  >
+                    <option value="">Select customer</option>
+                    {(data?.customers ?? [])
+                      .filter((row) => row.id !== summary.customer.id)
+                      .map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.name} · {row.code}
+                        </option>
+                      ))}
+                  </NativeSelect>
+                </Field>
+              </>
+            )}
+            {type === 'CORRECT_DELIVERY' && (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Enter what actually reached the customer. Charges and any
+                  cash, credit or points that settled them are adjusted;
+                  Warehouse can confirm the rest later.
+                </p>
+                <div className="overflow-hidden rounded-lg border">
+                  <Table
+                    columns={[
+                      'Item',
+                      'Recorded as delivered',
+                      'Actually delivered',
+                    ]}
+                  >
+                    {(shipment?.lines ?? []).map((line) => {
+                      const label =
+                        data?.skus.find((sku) => sku.id === line.sku_id)
+                          ?.name ?? 'Product';
+                      const question = decisions.find(
+                        (row) => row.key === `confirmation:${line.id}`,
+                      );
+                      return (
+                        <tr key={line.id}>
+                          <td className="min-w-40">{label}</td>
+                          <td className="text-muted-foreground">
+                            {line.delivered}
+                            {line.returned
+                              ? ` (${line.returned} returned)`
+                              : ''}
+                          </td>
+                          <td>
+                            <Input
+                              className="w-24 bg-white"
+                              aria-label={`Actually delivered ${label}`}
+                              name={`delivered-${line.id}`}
+                              type="number"
+                              min={line.returned}
+                              max={line.delivered}
+                              step={1}
+                              defaultValue={line.delivered}
+                            />
+                            {question && (
+                              <NativeSelect
+                                className="mt-2 w-full"
+                                aria-label={question.prompt}
+                                name={`confirmation-${line.id}`}
+                                required
+                                defaultValue=""
+                              >
+                                <option value="">{question.prompt}</option>
+                                {question.options.map((option) => (
+                                  <option key={option.id} value={option.id}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </NativeSelect>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </Table>
+                </div>
+              </>
             )}
             {quantities && (
               <div className="overflow-hidden rounded-lg border">
