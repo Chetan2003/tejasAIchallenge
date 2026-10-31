@@ -1,5 +1,7 @@
 # FieldDesk CRM
 
+> **Take-home submission (Tejas, Business Rules Engine):** start with [Evaluator_notes.md](Evaluator_notes.md). It maps every deliverable to a file, says what is agent-written and what is unverified, and gives a 15-minute reading order. The generated rule sheet is [docs/rules-catalog.md](docs/rules-catalog.md).
+
 A local CRM for sales, warehouse operations, customer accounts, and finance, built with React, shadcn/ui, Zustand, NestJS, Drizzle, and SQLite in a pnpm workspace.
 
 | Area           | Features                                                                              |
