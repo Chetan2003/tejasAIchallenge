@@ -20,9 +20,10 @@ See [Account reconciliation](verification.md#account-reconciliation) for the der
 
 ## Version history
 
-| Version      | Effective date | Scope                                                                                     |
-| ------------ | -------------- | ----------------------------------------------------------------------------------------- |
-| 2026-10-26.1 | 2026-10-26     | Operating conventions for customer records, orders, fulfillment, settlement, and rewards. |
+| Version                     | Effective date | Scope                                                                                                                                                                                                                           |
+| --------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-26.1                | 2026-10-26     | Operating conventions for customer records, orders, fulfillment, settlement, and rewards.                                                                                                                                       |
+| 2026-10-26.1 + FDSK-169/170 | 2026-10-31     | Adds **ACC-004** (receipt move) and **WF-006** (delivery correction); extends ACC-002, WF-002, WF-005 and FUL-006. The version string in code is unchanged on purpose: existing tests pin it, and these rules only add actions. |
 
 ## Related
 

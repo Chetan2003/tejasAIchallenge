@@ -71,7 +71,7 @@ $$
 
 **FUL-005. Dispatch.** Dispatch a whole `LOADING` batch. Its loaded units become dispatched units, its reservation ends, and its status becomes `DISPATCHED`.
 
-**FUL-006. Delivery.** Confirm quantities only on a `DISPATCHED` batch; set it to `DELIVERED` when all dispatched units are confirmed.
+**FUL-006. Delivery.** Confirm quantities only on a `DISPATCHED` batch; set it to `DELIVERED` when all dispatched units are confirmed. A correction (**WF-006**) can reopen a `DELIVERED` batch.
 
 ![Shipment lifecycle diagram](diagrams/shipment-lifecycle.svg)
 
@@ -97,13 +97,15 @@ $$
 v_j,c_j,k_j,z_j\geq0,\qquad b_j=v_j-c_j-k_j-z_j\geq0.
 $$
 
-**ACC-002. Receipt capacity.** Receipt value is either allocated, reserved as credit funding, or free:
+**ACC-002. Receipt capacity.** Receipt value is either allocated, reserved as credit funding, moved to another customer (**ACC-004**), or free:
 
 $$
-a_i,f_i\geq0,\qquad u_i=m_i-a_i-f_i\geq0.
+a_i,f_i,t_i\geq0,\qquad u_i=m_i-a_i-f_i-t_i\geq0.
 $$
 
 #### Domain policies
+
+**ACC-004. Receipt move.** Accounts may move a receipt recorded against the wrong customer to the right one, with a reason. The move is whole, and the original receipt stays on record (**WF-001**). Linked negative allocations release the cash it settled on the source customer, the move consumes its value ($t_i=m_i$), and the destination customer gets a new receipt with the same amount and bank reference (**CUS-001**). Refuse the move when the receipt funds a credit note ($f_i>0$) or has already been moved. Points follow cash by **REW-002**, so the source customer's earned points fall (a shortfall becomes clawback pending under **REW-003**) and the destination customer's rise.
 
 **ACC-003. Cash priority.** Allocate free cash across the customer's outstanding charges in creation-time order, breaking ties by recording order. Visit receipts in that same ordering. Each allocation takes:
 
@@ -185,7 +187,7 @@ $$
 
 ### Domain policies
 
-**WF-002. Cash allocation occasions.** Apply **ACC-003** after payment receipt, delivery confirmation, additional-goods correction, and completed return settlement, or on explicit allocation. Other operations do not trigger cash allocation.
+**WF-002. Cash allocation occasions.** Apply **ACC-003** after payment receipt, delivery confirmation, additional-goods correction, and completed return settlement, or on explicit allocation. Other operations do not trigger cash allocation. In particular, a receipt move (**ACC-004**) is a payment receipt for the destination customer only, and a delivery correction (**WF-006**) is not an occasion: the cash it releases stays free until the next occasion.
 
 ### Transitions
 
@@ -206,6 +208,10 @@ $$
 \qquad \#\operatorname{charges}(e)=1.
 $$
 
+A correction under **WF-006** is a confirmation with $q_e<0$ and creates exactly one negative charge, so the same relation holds.
+
+**WF-006. Delivery correction.** A KAM may lower the delivered units of a shipment line to $d_h'$ with $r_h\leq d_h'<d_h$, with a reason. The correction names the confirmation it reduces; when several confirmations still stand and none is named, ask. It cannot exceed the units that confirmation's charge still carries. Record a negative confirmation and, under **WF-005**, one negative charge against that confirmation's charge. Release settlement exceeding the lowered charge as in **WF-003**: cash, then credit, then points, each restored to its original source. No fee and no credit note arise. A `DELIVERED` batch with undelivered units becomes `DISPATCHED` again (**FUL-006**), so Warehouse can confirm the rest later. Points follow cash by **REW-002**.
+
 ![Return settlement flow](diagrams/return-settlement.svg)
 
 ## Appendix A. Notation
@@ -218,15 +224,15 @@ A prime denotes the resulting value. Posting totals include signed reversals. Re
 
 ### Symbols
 
-| Symbol                | Business fact                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------------- |
-| $l,h,j,i,n$           | Commercial line, shipment line, charge, receipt, credit note.                                |
-| $Q_l,C_l,S_l,R_l,L_l$ | Ordered, canceled, dispatched, returned, and currently loading units of a commercial line.   |
-| $s_h,d_h,r_h$         | Dispatched, gross delivered, and returned units of a shipment line.                          |
-| $p_l,\rho_l,p_h$      | Agreed commercial price, commercial points per unit, and shipment-line price.                |
-| $v_j,c_j,k_j,z_j,b_j$ | Retained charge value, cash applied, credit applied, points applied, and outstanding amount. |
-| $m_i,a_i,f_i,u_i$     | Receipt amount, net cash allocated, credit funding reserved, and free cash.                  |
-| $I_n,K_n,F_n,O_n$     | Issued credit, net applications, net refunds, and open credit.                               |
+| Symbol                | Business fact                                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------------- |
+| $l,h,j,i,n$           | Commercial line, shipment line, charge, receipt, credit note.                                 |
+| $Q_l,C_l,S_l,R_l,L_l$ | Ordered, canceled, dispatched, returned, and currently loading units of a commercial line.    |
+| $s_h,d_h,r_h$         | Dispatched, gross delivered, and returned units of a shipment line.                           |
+| $p_l,\rho_l,p_h$      | Agreed commercial price, commercial points per unit, and shipment-line price.                 |
+| $v_j,c_j,k_j,z_j,b_j$ | Retained charge value, cash applied, credit applied, points applied, and outstanding amount.  |
+| $m_i,a_i,f_i,t_i,u_i$ | Receipt amount, net cash allocated, credit funding reserved, value moved away, and free cash. |
+| $I_n,K_n,F_n,O_n$     | Issued credit, net applications, net refunds, and open credit.                                |
 
 ### Quantity and value definitions
 
