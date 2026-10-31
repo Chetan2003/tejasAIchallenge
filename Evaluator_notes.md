@@ -60,19 +60,20 @@ pnpm check     # lint, typecheck, tests, build
 
 ## Time spent
 
-**Agent session, from the repository's own timestamps** (first user message 17:19 IST; times are approximate and the phases overlap):
+**Agent session, from the repository's own commit timestamps** (first user message 17:19 IST; phases are read off the first and last commit of each, so treat them as approximate):
 
-| Phase                                                                  | Time (IST)    | About        |
-| ---------------------------------------------------------------------- | ------------- | ------------ |
-| Reading: brief, canonical rules, services, baseline test run           | 17:19 – 17:27 | 8 min        |
-| Planning: drafts 1 and 2, extract `reduceCharge`                       | 17:27 – 17:31 | 4 min        |
-| Coding, plain solution: schema, FDSK-170, FDSK-169, tests              | 17:31 – 17:42 | 11 min       |
-| Research and draft 3                                                   | 17:42 – 17:44 | 2 min        |
-| Coding, framework: catalog, events, engine, rule sheet, canonical docs | 17:44 – 17:51 | 7 min        |
-| UI and browser check                                                   | 17:51 – 18:05 | about 14 min |
-| Final docs, notes, full check, bundle                                  | 18:05 – 18:30 | about 25 min |
+| Phase                                                                   | Time (IST)    | About            |
+| ----------------------------------------------------------------------- | ------------- | ---------------- |
+| Reading: brief, canonical rules, services, baseline test run            | 17:19 – 17:27 | 8 min            |
+| Planning: drafts 1 and 2, extract `reduceCharge`                        | 17:27 – 17:31 | 4 min            |
+| Coding, plain solution: schema, FDSK-170, FDSK-169, tests               | 17:31 – 17:42 | 11 min           |
+| Research (three searches) and draft 3                                   | 17:42 – 17:44 | 2 min            |
+| Coding, framework: catalog, events, engine, rule sheet, canonical rules | 17:44 – 17:51 | 7 min            |
+| UI and browser check                                                    | 17:51 – 17:55 | 4 min            |
+| Final docs, notes, full check on a clean clone, bundle                  | 17:55 – 18:06 | 11 min           |
+| **Total agent wall-clock**                                              |               | **about 47 min** |
 
-The session is the agent's wall-clock, not a measure of how long this would take a person.
+That is the agent's elapsed time, not an estimate of how long a person would need. Reading and understanding the result is separate, and is yours.
 
 **Chetan's own time:** _fill in: reading the brief, conversation with the agent, reviewing the diff, exporting the chat, pushing and inviting collaborators._
 
