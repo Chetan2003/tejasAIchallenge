@@ -86,15 +86,19 @@ export const crmDeliveries = sqliteTable(
       .notNull()
       .references(() => crmOrders.id, { onDelete: 'cascade' }),
     qty: integer('qty').notNull(),
+    reverses_delivery_id: text('reverses_delivery_id'),
     action_id: text('action_id').notNull(),
     created_at: text('created_at').notNull(),
   },
   (t) => [
     index('deliveries_shipment_line_id_idx').on(t.shipment_line_id),
     index('deliveries_order_id_idx').on(t.order_id),
+    index('deliveries_reverses_delivery_id_idx').on(t.reverses_delivery_id),
+    // A confirmation is positive; a correction is a negative row that names
+    // the confirmation it reduces (WF-001: compensate, never edit).
     check(
       'deliveries_qty_check',
-      sql`typeof(${t.qty}) = 'integer' and ${t.qty} > 0`,
+      sql`typeof(${t.qty}) = 'integer' and (${t.qty} > 0 or (${t.qty} < 0 and ${t.reverses_delivery_id} is not null))`,
     ),
   ],
 );

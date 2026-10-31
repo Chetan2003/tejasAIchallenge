@@ -333,6 +333,7 @@ export interface CustomerSummary {
 export interface LedgerView {
   finance: Array<Record<string, unknown>>;
   receipts: Array<Record<string, unknown>>;
+  receiptMoves: Array<Record<string, unknown>>;
   allocations: Array<Record<string, unknown>>;
   creditApplications: Array<Record<string, unknown>>;
   credits: Array<Record<string, unknown>>;
