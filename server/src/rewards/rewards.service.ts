@@ -8,7 +8,7 @@ import { CreditsRepository } from '../credits/credits.repository.js';
 import { OrdersRepository } from '../orders/orders.repository.js';
 import { ReturnsRepository } from '../returns/returns.repository.js';
 import type { ActionContext as Context, Payload } from '../common/domain.js';
-import { authorize, useCustomer, fail, safe } from '../common/domain.js';
+import { useCustomer, fail, safe } from '../common/domain.js';
 
 @Injectable()
 export class RewardsService {
@@ -21,7 +21,6 @@ export class RewardsService {
     private readonly returnsRepository: ReturnsRepository,
   ) {}
   redeem(c: Context, p: Payload<'REDEEM_POINTS'>) {
-    authorize(c, 'SALES', 'ACCOUNTS', 'ADMIN');
     useCustomer(c, this.customersRepository.findById(p.customerId));
     const balance = this.rewardsRepository.availableForCustomer(c.customerId);
     const debt = this.rewardsRepository.debtForCustomer(c.customerId);

@@ -5,16 +5,15 @@ import { OrdersRepository } from '../orders/orders.repository.js';
 import { FulfillmentRepository } from '../fulfillment/fulfillment.repository.js';
 import { AccountsRepository } from '../accounts/accounts.repository.js';
 import { AccountsService } from '../accounts/accounts.service.js';
-import { RewardsService } from '../rewards/rewards.service.js';
 import { CatalogRepository } from '../catalog/catalog.repository.js';
 import { ReturnsRepository } from '../returns/returns.repository.js';
 import type { ActionContext as Context, Payload } from '../common/domain.js';
 import {
-  authorize,
   useOrder,
   fail,
   safe,
   distinct,
+  emit,
   DomainDecision as Decision,
 } from '../common/domain.js';
 
@@ -25,12 +24,10 @@ export class FulfillmentService {
     private readonly fulfillmentRepository: FulfillmentRepository,
     private readonly accountsRepository: AccountsRepository,
     private readonly accountsService: AccountsService,
-    private readonly rewardsService: RewardsService,
     private readonly catalogRepository: CatalogRepository,
     private readonly returnsRepository: ReturnsRepository,
   ) {}
   load(c: Context, p: Payload<'START_LOADING'>) {
-    authorize(c, 'WAREHOUSE', 'ADMIN');
     const order = useOrder(c, this.ordersRepository.findById(p.orderId));
     if (
       order.status !== 'APPROVED' ||
@@ -82,7 +79,6 @@ export class FulfillmentService {
     }
   }
   dispatch(c: Context, p: Payload<'DISPATCH_SHIPMENT'>) {
-    authorize(c, 'WAREHOUSE', 'ADMIN');
     const order = useOrder(c, this.ordersRepository.findById(p.orderId));
     const shipment = this.fulfillmentRepository.findForOrder(
       p.shipmentId,
@@ -106,7 +102,6 @@ export class FulfillmentService {
       });
   }
   deliver(c: Context, p: Payload<'CONFIRM_DELIVERY'>) {
-    authorize(c, 'WAREHOUSE', 'ADMIN');
     const order = useOrder(c, this.ordersRepository.findById(p.orderId));
     const shipment = this.fulfillmentRepository.findForOrder(
       p.shipmentId,
@@ -162,9 +157,7 @@ export class FulfillmentService {
         status: 'DELIVERED',
       });
 
-    this.accountsService.allocateCash(c, c.customerId);
-
-    this.rewardsService.refresh(c, c.customerId);
+    emit(c, 'DELIVERY_CONFIRMED');
   }
   /**
    * FDSK-170. Lower the delivered quantity of shipment lines to what really
@@ -174,7 +167,6 @@ export class FulfillmentService {
    * source (WF-003). Cash is not re-allocated (WF-002); points are re-derived.
    */
   correctDelivery(c: Context, p: Payload<'CORRECT_DELIVERY'>) {
-    authorize(c, 'KAM', 'ADMIN');
     const order = useOrder(c, this.ordersRepository.findById(p.orderId));
     const shipment = this.fulfillmentRepository.findForOrder(
       p.shipmentId,
@@ -288,10 +280,9 @@ export class FulfillmentService {
         status: 'DISPATCHED',
       });
 
-    this.rewardsService.refresh(c, c.customerId);
+    emit(c, 'DELIVERY_CORRECTED');
   }
   correct(c: Context, p: Payload<'CORRECT_DISPATCHED_ORDER'>) {
-    authorize(c, 'KAM', 'ADMIN');
     const order = useOrder(c, this.ordersRepository.findById(p.orderId));
     const shipments = this.fulfillmentRepository.dispatchedForOrderDocuments(
       order.id,
@@ -481,9 +472,7 @@ export class FulfillmentService {
       }
     }
 
-    this.accountsService.allocateCash(c, c.customerId);
-
-    this.rewardsService.refresh(c, c.customerId);
+    emit(c, 'GOODS_CORRECTED');
   }
   forOrder(orderId: string) {
     if (!this.ordersRepository.findById(orderId))

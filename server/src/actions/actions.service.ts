@@ -18,7 +18,11 @@ import { AuditRepository } from '../audit/audit.repository.js';
 import { AuditService } from '../audit/audit.service.js';
 import { DatabaseService } from '../database/database.service.js';
 import type { ActionContext as Context } from '../common/domain.js';
+import { ACTIONS, REACTIONS, REACTION_ORDER } from '../rules/action-catalog.js';
+import { handlersFor } from './action-handlers.js';
+import type { Handlers } from './action-handlers.js';
 import {
+  authorize,
   useOrder,
   useCustomer,
   fail,
@@ -51,7 +55,42 @@ export class ActionsService {
     private readonly auditRepository: AuditRepository,
     private readonly auditService: AuditService,
     private readonly database: DatabaseService,
-  ) {}
+  ) {
+    this.handlers = handlersFor({
+      customers: customersService,
+      orders: ordersService,
+      fulfillment: fulfillmentService,
+      returns: returnsService,
+      accounts: accountsService,
+      rewards: rewardsService,
+      credits: creditsService,
+    });
+  }
+  private readonly handlers: Handlers;
+  /**
+   * After a handler: for each customer it reported on, in the order they were
+   * first mentioned, run the reactions the reaction table lists for what
+   * happened to them (cash first, then points).
+   */
+  private react(c: Context) {
+    const customers = [...new Set(c.events.map((event) => event.customerId))];
+    for (const customerId of customers) {
+      const happened = c.events
+        .filter((event) => event.customerId === customerId)
+        .map((event) => event.type);
+      for (const name of REACTION_ORDER) {
+        if (
+          !happened.some((type) =>
+            REACTIONS[name].after.some((t) => t === type),
+          )
+        )
+          continue;
+        if (name === 'allocateCash')
+          this.accountsService.allocateCash(c, customerId);
+        else this.rewardsService.refresh(c, customerId);
+      }
+    }
+  }
   execute(envelope: ActionEnvelope, requester: User): ActionResult {
     return this.database.db.transaction(
       () => {
@@ -107,6 +146,7 @@ export class ActionsService {
           now: new Date().toISOString(),
           customerId: '',
           customerIds: new Set(),
+          events: [],
           effects: [],
           references: {},
           command: envelope.command,
@@ -152,86 +192,16 @@ export class ActionsService {
               stage: 'request',
               explanation: `${actor.name} (${actor.role}) requested ${envelope.command.type} against version ${aggregate.version}. Business terms ${BUSINESS_TERMS_VERSION}.`,
             });
-            switch (envelope.command.type) {
-              case 'UPDATE_CUSTOMER':
-                this.customersService.updateCustomer(
-                  c,
-                  envelope.command.payload,
-                );
-                break;
-              case 'PUNCH_ORDER':
-                this.ordersService.punch(c, envelope.command.payload);
-                break;
-              case 'EDIT_ORDER':
-                this.ordersService.edit(c, envelope.command.payload);
-                break;
-              case 'SUBMIT_ORDER':
-                this.ordersService.submit(c, envelope.command.payload);
-                break;
-              case 'APPROVE_ORDER':
-                this.ordersService.approve(c, envelope.command.payload);
-                break;
-              case 'REJECT_ORDER':
-                this.ordersService.reject(c, envelope.command.payload);
-                break;
-              case 'START_LOADING':
-                this.fulfillmentService.load(c, envelope.command.payload);
-                break;
-              case 'DISPATCH_SHIPMENT':
-                this.fulfillmentService.dispatch(c, envelope.command.payload);
-                break;
-              case 'CONFIRM_DELIVERY':
-                this.fulfillmentService.deliver(c, envelope.command.payload);
-                break;
-              case 'MOVE_CUSTOMER_PAYMENT':
-                this.accountsService.moveReceipt(c, envelope.command.payload);
-                break;
-              case 'CORRECT_DELIVERY':
-                this.fulfillmentService.correctDelivery(
-                  c,
-                  envelope.command.payload,
-                );
-                break;
-              case 'CANCEL_REMAINDER':
-                this.ordersService.cancel(c, envelope.command.payload);
-                break;
-              case 'RECORD_RETURN':
-                this.returnsService.returnItems(c, envelope.command.payload);
-                break;
-              case 'RECEIVE_CUSTOMER_PAYMENT':
-                this.accountsService.receive(c, envelope.command.payload);
-                break;
-              case 'ALLOCATE_PAYMENT':
-                this.accountsService.allocate(c, envelope.command.payload);
-                break;
-              case 'REDEEM_POINTS':
-                this.rewardsService.redeem(c, envelope.command.payload);
-                break;
-              case 'ISSUE_CREDIT_NOTE':
-                this.creditsService.issueCredit(c, envelope.command.payload);
-                break;
-              case 'APPLY_CREDIT_NOTE':
-                this.creditsService.applyCredit(c, envelope.command.payload);
-                break;
-              case 'REFUND_CREDIT_NOTE':
-                this.creditsService.refundCredit(c, envelope.command.payload);
-                break;
-              case 'REVERSE_CREDIT_APPLICATION':
-                this.creditsService.reverseCreditApplication(
-                  c,
-                  envelope.command.payload,
-                );
-                break;
-              case 'REVERSE_CREDIT_REFUND':
-                this.creditsService.reverseCreditRefund(
-                  c,
-                  envelope.command.payload,
-                );
-                break;
-              case 'CORRECT_DISPATCHED_ORDER':
-                this.fulfillmentService.correct(c, envelope.command.payload);
-                break;
-            }
+            const rule = ACTIONS[envelope.command.type];
+            authorize(c, ...rule.roles, 'ADMIN');
+            c.allowedEvents = rule.emits;
+            (
+              this.handlers[envelope.command.type] as (
+                c: Context,
+                payload: typeof envelope.command.payload,
+              ) => void
+            )(c, envelope.command.payload);
+            this.react(c);
             for (const customerId of c.customerIds) {
               this.customersRepository.updateCustomer(c, customerId, {
                 version:

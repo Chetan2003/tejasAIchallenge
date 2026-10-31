@@ -25,7 +25,8 @@
     "db:studio": "pnpm --filter @crm/server db:studio",
     "admin:create": "pnpm --filter @crm/shared build && pnpm --filter @crm/server admin:create",
     "db:seed": "pnpm --filter @crm/shared build && pnpm --filter @crm/server db:seed",
-    "metrics": "node scripts/source-metrics.mjs"
+    "metrics": "node scripts/source-metrics.mjs",
+    "rules:doc": "pnpm --filter @crm/shared build && pnpm --filter @crm/server rules:doc"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

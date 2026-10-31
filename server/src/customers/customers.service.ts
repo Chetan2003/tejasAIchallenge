@@ -10,7 +10,7 @@ import type { Customer } from '@crm/shared/crm';
 import { CustomersRepository } from '../customers/customers.repository.js';
 import { DatabaseService } from '../database/database.service.js';
 import type { ActionContext as Context, Payload } from '../common/domain.js';
-import { authorize, useCustomer, fail } from '../common/domain.js';
+import { useCustomer, fail } from '../common/domain.js';
 
 @Injectable()
 export class CustomersService {
@@ -19,7 +19,6 @@ export class CustomersService {
     private readonly database: DatabaseService,
   ) {}
   updateCustomer(c: Context, p: Payload<'UPDATE_CUSTOMER'>) {
-    authorize(c, 'ADMIN', 'SALES', 'ACCOUNTS');
     useCustomer(c, this.customersRepository.findById(p.customerId));
     if (this.customersRepository.findOtherByCode(p.code, p.customerId))
       fail('CUSTOMER_CODE_EXISTS', 'Another customer already uses this code');
@@ -40,6 +39,7 @@ export class CustomersService {
           now: new Date().toISOString(),
           customerId: randomUUID(),
           customerIds: new Set(),
+          events: [],
           effects: [],
           references: {},
         };

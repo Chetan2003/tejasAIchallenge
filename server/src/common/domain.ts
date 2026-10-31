@@ -5,6 +5,7 @@ import type {
   Customer,
 } from '@crm/shared/crm';
 import type { User, Role } from '@crm/shared';
+import type { DomainEvent } from '../rules/domain-events.js';
 export type Payload<T extends CrmCommand['type']> = Extract<
   CrmCommand,
   { type: T }
@@ -18,6 +19,10 @@ export interface ActionContext {
   customerId: string;
   /** Every customer whose books the command changes, including `customerId`. */
   customerIds: Set<string>;
+  /** What happened to whom. The engine turns these into follow-up work (see the reaction table). */
+  events: Array<{ type: DomainEvent; customerId: string }>;
+  /** Events the running action declared in the action catalog; anything else is a bug. */
+  allowedEvents?: readonly DomainEvent[];
   orderId?: string;
   effects: ActionResult['effects'];
   references: Record<string, string>;
@@ -55,6 +60,23 @@ export function authorize(c: ActionContext, ...roles: Role[]) {
 /** Declare that the command changes this customer's books (versions, audit trail, invariant review). */
 export function touch(c: ActionContext, customerId: string) {
   c.customerIds.add(customerId);
+}
+/**
+ * Report that something happened to a customer's books. This also marks the
+ * customer as affected. What must follow is decided by the reaction table,
+ * not by the caller.
+ */
+export function emit(
+  c: ActionContext,
+  type: DomainEvent,
+  customerId = c.customerId,
+) {
+  if (c.allowedEvents && !c.allowedEvents.includes(type))
+    throw new Error(
+      `${type} is not declared for this action in the action catalog`,
+    );
+  c.events.push({ type, customerId });
+  touch(c, customerId);
 }
 export function useOrder(c: ActionContext, order: OrderListRow | undefined) {
   if (!order) fail('NOT_FOUND', 'Order not found');
