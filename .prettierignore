@@ -3,3 +3,4 @@ dist
 dist-test
 pnpm-lock.yaml
 server/drizzle/meta
+docs/rules-catalog.md
